@@ -377,7 +377,7 @@ const SHOP=[
   {id:'breather',icon:'🫧', name:'Передышка',   desc:'Один ход без досыпки новых шариков',  price:1, pack:5,  packPrice:4},
   {id:'revive',  icon:'❤️', name:'Продолжение', desc:'Очистить часть поля после проигрыша',price:3, pack:3,  packPrice:7},
 ];
-const INVOICE_API=''; // ← URL бот-эндпоинта createInvoiceLink (появится при деплое); пусто = демо-режим
+const INVOICE_API='https://tpgbsziwiezwmhtoxfkc.supabase.co/functions/v1/colorlines/api/invoice'; // Supabase Edge Function; пусто = демо-режим
 const STARTER={bomb:3, shuffle:3, breather:3, revive:3}; // подарок новому игроку
 let inv = (()=>{
   const raw=localStorage.getItem('cl_inv');
