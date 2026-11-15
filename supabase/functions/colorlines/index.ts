@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
   // Одноразовая настройка: вебхук + кнопка меню (открыть в браузере один раз)
   if (path.endsWith("/setup")) {
     if (!TG_SECRET || url.searchParams.get("key") !== TG_SECRET) return json({ error: "bad key" }, 403);
-    const base = `${url.origin}${path.replace(/\/setup$/, "")}`;
+    const base = `${SUPABASE_URL}/functions/v1/colorlines`;   // всегда HTTPS (req.url внутри функции бывает http)
     const out: Record<string, unknown> = {};
     try { out.webhook = await tg("setWebhook", { url: `${base}/webhook`, secret_token: TG_SECRET, allowed_updates: ["message", "pre_checkout_query"] }); } catch (e) { out.webhookError = String(e); }
     try { out.menu = await tg("setChatMenuButton", { menu_button: { type: "web_app", text: "🎮 Играть", web_app: { url: WEBAPP_URL } } }); } catch (e) { out.menuError = String(e); }
