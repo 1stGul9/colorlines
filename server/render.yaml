@@ -1,0 +1,23 @@
+# Render Blueprint для бэкенда Stars. База — на Supabase (DATABASE_URL).
+services:
+  - type: web
+    name: colorlines-bot
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: BOT_TOKEN
+        sync: false            # токен из @BotFather — вставить в дашборде Render
+      - key: DATABASE_URL
+        sync: false            # строка подключения Supabase
+      - key: WEBHOOK_SECRET
+        sync: false            # любая случайная строка
+      - key: WEBAPP_ORIGINS
+        value: https://1stgul9.github.io
+      - key: WEBAPP_URL
+        value: https://1stgul9.github.io/colorlines/
+      - key: NODE_VERSION
+        value: "20"

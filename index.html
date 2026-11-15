@@ -303,8 +303,7 @@
   </div>
 
   <div class="boardwrap">
-    <div class="board" id="board"></div>
-    <div id="flyer"></div>
+    <div class="board" id="board"><div id="flyer"></div></div>
   </div>
 
   <div class="powerbar">
@@ -405,7 +404,7 @@ function applySkin(){ const u=$('youSkinUse'); if(u) u.setAttribute('href','#ski
 function equipSkin(id){ if(!ownsSkin(id)) return; skins.equip=id; saveSkins(); applySkin(); renderShop();
   tg?.HapticFeedback?.selectionChanged?.(); toast('Надет образ: '+(SKINS.find(s=>s.id===id)?.name||id)); }
 function buySkin(id){ const sk=SKINS.find(s=>s.id===id); if(!sk||ownsSkin(id)) return;
-  payStars(sk.price, `Образ «${sk.name}»`, ()=>{ skins.owned.push(id); skins.equip=id; saveSkins(); applySkin(); renderShop();
+  payStars({kind:'skin', id, qty:1, title:`Образ «${sk.name}»`, stars:sk.price}, ()=>{ skins.owned.push(id); skins.equip=id; saveSkins(); applySkin(); renderShop();
     toast('🎉 Куплен образ: '+sk.name); }); }
 
 // клетки
@@ -525,9 +524,14 @@ function moveBall(from,to,path){
   const fly=$('flyer');
   fly.style.display='block'; fly.style.width=fly.style.height=size+'px'; fly.style.background=ballBg(color);
   const frames=path.map(i=>{const p=pt(i); return {left:p.x+'px', top:p.y+'px'};});
-  const dur=Math.max(150, (path.length-1)*55);
+  fly.style.left=frames[0].left; fly.style.top=frames[0].top;   // стартовая позиция — без мигания в углу
+  const dur=Math.min(1100, Math.max(300, (path.length-1)*95));  // помедленнее: ~95мс на клетку, видно весь маршрут
+  let done=false;
+  const finish=()=>{ if(done) return; done=true; fly.style.display='none'; grid[to]=color; render(); afterMove(to); busy=false; };
   const anim=fly.animate(frames,{duration:dur, easing:'ease-in-out'});
-  anim.onfinish=()=>{ fly.style.display='none'; grid[to]=color; render(); afterMove(to); busy=false; };
+  anim.onfinish=finish;
+  // страховка: если анимация подвисла (вкладка в фоне / throttle), всё равно завершаем ход
+  setTimeout(finish, dur+450);
 }
 
 function afterMove(){
@@ -673,23 +677,41 @@ function grant(id,qty){ inv[id]=have(id)+qty; saveInv(); renderPower(); renderSh
   const it=SHOP.find(s=>s.id===id); toast(`✅ +${qty} «${it?it.name:id}»`); }
 function buy(id,qty,price,onDone){
   const it=SHOP.find(s=>s.id===id);
-  payStars(price, `${it.name} ×${qty}`, ()=>{ grant(id,qty); if(onDone)onDone(); });
+  payStars({kind:'power', id, qty, title:`${it.name} ×${qty}`, stars:price}, ()=>{ grant(id,qty); if(onDone)onDone(); });
 }
-function payStars(amount, label, onPaid){
-  // Реальная оплата: Telegram Stars через invoice-ссылку от бота
+// order = {kind:'power'|'skin', id, qty, title, stars}
+function payStars(order, onPaid){
+  // Реальная оплата: Telegram Stars через invoice-ссылку от бота (сервер сам считает цену по каталогу)
   if(tg && typeof tg.openInvoice==='function' && INVOICE_API){
     fetch(INVOICE_API,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({item:label, amount, initData:tg.initData})})
-      .then(r=>r.json()).then(({link})=>{
-        if(!link){ toast('Оплата недоступна'); return; }
-        tg.openInvoice(link,(status)=>{ if(status==='paid') onPaid(); });
+      body:JSON.stringify({kind:order.kind, id:order.id, qty:order.qty, initData:tg.initData})})
+      .then(r=>r.json()).then(({link,error})=>{
+        if(!link){ toast(error||'Оплата недоступна'); return; }
+        tg.openInvoice(link,(status)=>{ if(status==='paid'){ onPaid(); syncFromServer(); } });
       }).catch(()=>toast('Оплата недоступна'));
     return;
   }
   // Демо-режим (превью / сервер ещё не подключён)
-  const msg=`Купить «${label}» за ⭐${amount}?\n(демо — без реальной оплаты)`;
-  if(tg && typeof tg.showConfirm==='function'){ tg.showConfirm(msg,(yes)=>{ if(yes) onPaid(); }); }
-  else if(confirm(msg)){ onPaid(); }
+  const msg=`Купить «${order.title}» за ⭐${order.stars}?\n(демо — без реальной оплаты)`;
+  const inTelegram = !!(tg && tg.initData);   // реально запущено из Telegram, а не браузер/превью
+  try{
+    if(inTelegram && typeof tg.showConfirm==='function'){ tg.showConfirm(msg,(yes)=>{ if(yes) onPaid(); }); return; }
+  }catch(e){ /* на всякий случай — падаем на обычный confirm */ }
+  if(confirm(msg)){ onPaid(); }
+}
+// Синхронизация баланса с сервера (активна только при подключённом INVOICE_API)
+function syncFromServer(){
+  if(!INVOICE_API || !tg) return;
+  const base=INVOICE_API.replace(/\/api\/invoice\/?$/,'');
+  fetch(base+'/api/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:tg.initData})})
+    .then(r=>r.json()).then(s=>{
+      if(!s) return;
+      if(s.inv){ inv=s.inv; saveInv(); renderPower(); }
+      if(s.skins){ skins=s.skins; saveSkins(); applySkin(); }
+      if(typeof s.best==='number' && s.best>best){ best=s.best; bestName=s.bestName||bestName;
+        localStorage.setItem('cl_best',best); localStorage.setItem('cl_bestname',bestName); renderArena(); }
+      renderShop();
+    }).catch(()=>{});
 }
 
 // ── Продолжение после проигрыша ──
@@ -723,6 +745,7 @@ renderRivals();
 if(!load()) newGame();
 renderPower();
 applySkin();
+syncFromServer();   // подтянуть авторитетный баланс с сервера (работает только при заданном INVOICE_API)
 </script>
 </body>
 </html>
