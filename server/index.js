@@ -170,6 +170,27 @@ async function handleUpdate(update) {
   }
 }
 
+// ── Автонастройка при старте: вебхук + кнопка меню (чтобы не делать вручную) ──
+async function bootstrapBot() {
+  if (!BOT_TOKEN) return;
+  const pub = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/+$/, '');
+  if (pub) {
+    try {
+      await tg('setWebhook', { url: `${pub}/webhook/${WEBHOOK_SECRET}`, allowed_updates: ['message', 'pre_checkout_query'] });
+      console.log('✓ webhook установлен:', `${pub}/webhook/***`);
+    } catch (e) { console.warn('setWebhook не удался:', e.message); }
+  } else {
+    console.warn('PUBLIC_URL/RENDER_EXTERNAL_URL не заданы — вебхук не установлен автоматически.');
+  }
+  try {
+    await tg('setChatMenuButton', { menu_button: { type: 'web_app', text: '🎮 Играть', web_app: { url: WEBAPP_URL } } });
+    console.log('✓ кнопка меню → игра');
+  } catch (e) { console.warn('setChatMenuButton не удался:', e.message); }
+}
+
 store.init()
-  .then(() => app.listen(PORT, () => console.log(`Color Lines Stars backend on :${PORT} (pg=${store.usingPg})`)))
+  .then(() => app.listen(PORT, () => {
+    console.log(`Color Lines Stars backend on :${PORT} (pg=${store.usingPg})`);
+    bootstrapBot();
+  }))
   .catch((e) => { console.error('init failed', e); process.exit(1); });
