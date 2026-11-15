@@ -402,6 +402,7 @@ function saveSkins(){ try{ localStorage.setItem('cl_skins',JSON.stringify(skins)
 const ownsSkin=(id)=>skins.owned.includes(id);
 function applySkin(){ const u=$('youSkinUse'); if(u) u.setAttribute('href','#skin-'+(skins.equip||'poor')); }
 function equipSkin(id){ if(!ownsSkin(id)) return; skins.equip=id; saveSkins(); applySkin(); renderShop();
+  if(typeof apiPost==='function') apiPost('/api/equip',{id}).then(s=>{ if(s&&s.skins){ skins=s.skins; saveSkins(); applySkin(); } });
   tg?.HapticFeedback?.selectionChanged?.(); toast('Надет образ: '+(SKINS.find(s=>s.id===id)?.name||id)); }
 function buySkin(id){ const sk=SKINS.find(s=>s.id===id); if(!sk||ownsSkin(id)) return;
   payStars({kind:'skin', id, qty:1, title:`Образ «${sk.name}»`, stars:sk.price}, ()=>{ skins.owned.push(id); skins.equip=id; saveSkins(); applySkin(); renderShop();
@@ -497,7 +498,7 @@ function onCell(i){
   if(over||busy) return;
   if(bombMode){                               // режим бомбы: тап по шарику — убрать его
     if(grid[i]!=null && have('bomb')>0){
-      grid[i]=null; inv.bomb--; saveInv();
+      grid[i]=null; inv.bomb--; saveInv(); consumeServer('bomb');
       prev=null;                      // бомбу нельзя «откатить» (бустер уже потрачен)
       bombMode=false; selected=null; render(); renderPower(); save();
       tg?.HapticFeedback?.impactOccurred?.('heavy'); toast('💥 Шарик убран');
@@ -538,7 +539,7 @@ function afterMove(){
   const cl=findClears();
   if(cl.cells.length){ clearCells(cl.cells,cl.gained); save(); return; }
   if(breatherArmed){                          // передышка: пропустить досыпку один раз
-    breatherArmed=false; inv.breather=Math.max(0,have('breather')-1); saveInv();
+    breatherArmed=false; inv.breather=Math.max(0,have('breather')-1); saveInv(); consumeServer('breather');
     render(); renderPower(); save(); toast('🫧 Ход без досыпки'); return;
   }
   const placed=spawn(SPAWN); render();
@@ -628,7 +629,7 @@ function usePower(id){
     bombMode=!bombMode; breatherArmed=false; renderPower();
     toast(bombMode?'💣 Выбери шарик, чтобы убрать':'Бомба выключена');
   } else if(id==='shuffle'){
-    inv.shuffle--; saveInv(); next=[randColor(),randColor(),randColor()];
+    inv.shuffle--; saveInv(); consumeServer('shuffle'); next=[randColor(),randColor(),randColor()];
     renderNext(); renderPower(); save(); tg?.HapticFeedback?.selectionChanged?.(); toast('🔀 Следующие заменены');
   } else if(id==='breather'){
     breatherArmed=!breatherArmed; bombMode=false; renderPower();
@@ -679,45 +680,65 @@ function buy(id,qty,price,onDone){
   const it=SHOP.find(s=>s.id===id);
   payStars({kind:'power', id, qty, title:`${it.name} ×${qty}`, stars:price}, ()=>{ grant(id,qty); if(onDone)onDone(); });
 }
+// ── Связь с сервером (активна только при заданном INVOICE_API и запуске из Telegram) ──
+const serverOn = () => !!(INVOICE_API && tg && tg.initData);
+const apiBase  = () => INVOICE_API.replace(/\/api\/invoice\/?$/,'');
+function apiPost(sub, extra){
+  if(!serverOn()) return Promise.resolve(null);
+  return fetch(apiBase()+sub,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({initData:tg.initData, ...(extra||{})})}).then(r=>r.json()).catch(()=>null);
+}
+function applyServerState(s){
+  if(!s) return;
+  if(s.inv){ inv=s.inv; saveInv(); renderPower(); }
+  if(s.skins){ skins=s.skins; saveSkins(); applySkin(); }
+  if(typeof s.best==='number' && s.best>best){ best=s.best; bestName=s.bestName||bestName;
+    localStorage.setItem('cl_best',best); localStorage.setItem('cl_bestname',bestName); renderArena(); }
+  renderShop();
+}
+function syncFromServer(){ apiPost('/api/state',{}).then(applyServerState); }
+// После оплаты повторяем запрос: ждём, пока вебхук начислит покупку на сервере
+function syncWithRetry(tries){ tries=tries||6; let n=0;
+  const go=()=>{ apiPost('/api/state',{}).then(applyServerState); if(++n<tries) setTimeout(go,1300); };
+  setTimeout(go,1200);
+}
+// Серверное списание улучшения — «потратил = сгорело» (расход виден серверу, не вернётся при синхронизации)
+function consumeServer(id, delay){
+  if(!serverOn()) return;
+  const fire=()=>apiPost('/api/consume',{id,qty:1}).then(s=>{ if(s&&s.inv){ inv=s.inv; saveInv(); renderPower(); } });
+  delay ? setTimeout(fire,delay) : fire();
+}
+
 // order = {kind:'power'|'skin', id, qty, title, stars}
-function payStars(order, onPaid){
-  // Реальная оплата: Telegram Stars через invoice-ссылку от бота (сервер сам считает цену по каталогу)
-  if(tg && typeof tg.openInvoice==='function' && INVOICE_API){
-    fetch(INVOICE_API,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({kind:order.kind, id:order.id, qty:order.qty, initData:tg.initData})})
-      .then(r=>r.json()).then(({link,error})=>{
-        if(!link){ toast(error||'Оплата недоступна'); return; }
-        tg.openInvoice(link,(status)=>{ if(status==='paid'){ onPaid(); syncFromServer(); } });
-      }).catch(()=>toast('Оплата недоступна'));
+// onPaidDemo — локальное начисление (ТОЛЬКО демо); onAction — действие после покупки (напр. продолжить игру)
+function payStars(order, onPaidDemo, onAction){
+  if(serverOn() && typeof tg.openInvoice==='function'){
+    apiPost('/api/invoice',{kind:order.kind, id:order.id, qty:order.qty}).then(res=>{
+      const link = res && res.link;
+      if(!link){ toast((res&&res.error)||'Оплата недоступна'); return; }
+      tg.openInvoice(link,(status)=>{
+        if(status==='paid'){ toast('✅ Оплачено, зачисляем…'); if(onAction) onAction(); syncWithRetry(6); }
+      });
+    });
     return;
   }
-  // Демо-режим (превью / сервер ещё не подключён)
+  // Демо-режим (превью / без Telegram)
   const msg=`Купить «${order.title}» за ⭐${order.stars}?\n(демо — без реальной оплаты)`;
-  const inTelegram = !!(tg && tg.initData);   // реально запущено из Telegram, а не браузер/превью
+  const inTelegram = !!(tg && tg.initData);
+  const go=()=>{ if(onPaidDemo) onPaidDemo(); if(onAction) onAction(); };
   try{
-    if(inTelegram && typeof tg.showConfirm==='function'){ tg.showConfirm(msg,(yes)=>{ if(yes) onPaid(); }); return; }
-  }catch(e){ /* на всякий случай — падаем на обычный confirm */ }
-  if(confirm(msg)){ onPaid(); }
-}
-// Синхронизация баланса с сервера (активна только при подключённом INVOICE_API)
-function syncFromServer(){
-  if(!INVOICE_API || !tg) return;
-  const base=INVOICE_API.replace(/\/api\/invoice\/?$/,'');
-  fetch(base+'/api/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:tg.initData})})
-    .then(r=>r.json()).then(s=>{
-      if(!s) return;
-      if(s.inv){ inv=s.inv; saveInv(); renderPower(); }
-      if(s.skins){ skins=s.skins; saveSkins(); applySkin(); }
-      if(typeof s.best==='number' && s.best>best){ best=s.best; bestName=s.bestName||bestName;
-        localStorage.setItem('cl_best',best); localStorage.setItem('cl_bestname',bestName); renderArena(); }
-      renderShop();
-    }).catch(()=>{});
+    if(inTelegram && typeof tg.showConfirm==='function'){ tg.showConfirm(msg,(yes)=>{ if(yes) go(); }); return; }
+  }catch(e){ /* падаем на обычный confirm */ }
+  if(confirm(msg)) go();
 }
 
 // ── Продолжение после проигрыша ──
 function reviveFlow(){
-  if(have('revive')>0){ inv.revive--; saveInv(); doRevive(); }
-  else buy('revive',1,3,()=>doRevive());
+  if(have('revive')>0){ inv.revive--; saveInv(); renderPower(); consumeServer('revive'); doRevive(); return; }
+  // купить и сразу использовать: на сервере начислится вебхуком и спишется обратно → нетто 0
+  payStars({kind:'power', id:'revive', qty:1, title:'Продолжение', stars:3},
+    null,
+    ()=>{ doRevive(); consumeServer('revive', 3000); });
 }
 function doRevive(){
   const filled=[]; for(let i=0;i<CELLS;i++) if(grid[i]!=null) filled.push(i);

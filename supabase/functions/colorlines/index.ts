@@ -136,6 +136,33 @@ Deno.serve(async (req) => {
     return json({ best: p.best }, 200, cors);
   }
 
+  // Расход улучшения (трата списывается на сервере — «потратил = сгорело»)
+  if (path.endsWith("/api/consume")) {
+    const body = await req.json().catch(() => ({}));
+    const user = await verifyInitData(body.initData);
+    if (!user) return json({ error: "auth" }, 401, cors);
+    const id = String(body.id || "");
+    const n = Math.max(1, (body.qty | 0) || 1);
+    if (!(id in POWER)) return json({ error: "bad item" }, 400, cors);
+    const p = await getProfile(user.id);
+    p.inv = p.inv || {};
+    p.inv[id] = Math.max(0, (p.inv[id] || 0) - n);
+    await saveProfile(user.id, user.first_name || "", p);
+    return json({ inv: p.inv }, 200, cors);
+  }
+
+  // Смена надетого образа (сохраняется на сервере)
+  if (path.endsWith("/api/equip")) {
+    const body = await req.json().catch(() => ({}));
+    const user = await verifyInitData(body.initData);
+    if (!user) return json({ error: "auth" }, 401, cors);
+    const id = String(body.id || "");
+    const p = await getProfile(user.id);
+    p.skins = p.skins || { owned: ["poor"], equip: "poor" };
+    if (p.skins.owned.includes(id)) { p.skins.equip = id; await saveProfile(user.id, user.first_name || "", p); }
+    return json({ skins: p.skins }, 200, cors);
+  }
+
   if (path.endsWith("/api/top")) {
     const { data } = await db.rpc("cl_leaderboard", { lim: 20 });
     return json(data || [], 200, cors);
