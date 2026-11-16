@@ -92,15 +92,13 @@
     box-shadow:inset 0 -3px 5px rgba(0,0,0,.35)}
   .ball::before{content:'';position:absolute;top:10%;left:13%;width:40%;height:34%;border-radius:50%;
     background:radial-gradient(circle,rgba(255,255,255,1),rgba(255,255,255,0) 72%)}
-  /* след-лапка маршрута (F1 «Путь») */
-  .pawprint{position:absolute;left:27%;top:27%;width:46%;height:46%;opacity:.55;pointer-events:none;
+  /* след ботинка на маршруте (F1 «Путь») — подошва + пятка */
+  .footstep{position:absolute;left:30%;top:27%;width:40%;height:46%;opacity:.5;pointer-events:none;
     background:
-      radial-gradient(circle at 50% 72%, #5d6570 40%, transparent 44%),
-      radial-gradient(circle at 24% 34%, #5d6570 20%, transparent 24%),
-      radial-gradient(circle at 50% 24%, #5d6570 20%, transparent 24%),
-      radial-gradient(circle at 76% 34%, #5d6570 20%, transparent 24%);
-    animation:pawIn .18s ease-out}
-  @keyframes pawIn{from{opacity:0;transform:scale(.6)}to{opacity:.55;transform:scale(1)}}
+      radial-gradient(ellipse 56% 40% at 50% 31%, #5d6570 72%, transparent 74%),
+      radial-gradient(ellipse 34% 25% at 50% 80%, #5d6570 72%, transparent 74%)}
+  .footstep.l{transform:rotate(-16deg)}
+  .footstep.r{transform:rotate(16deg)}
   .cell.sel .ball{animation:hop .5s ease-in-out infinite}
   .ball.spawn{animation:pop .22s ease-out}
   .ball.clear{animation:clear .26s ease-in forwards}
@@ -567,7 +565,7 @@ function moveBall(from,to,path){
   const pts=path.map(i=>pt(i));
   // F1 «Путь»: следы-лапки по маршруту (все клетки, кроме конечной)
   const paws=[];
-  if(showPath){ for(let n=0;n<path.length-1;n++){ const pw=document.createElement('div'); pw.className='pawprint'; cellEls[path[n]].appendChild(pw); paws.push(pw); } }
+  if(showPath){ for(let n=0;n<path.length-1;n++){ const pw=document.createElement('div'); pw.className='footstep '+(n%2?'r':'l'); cellEls[path[n]].appendChild(pw); paws.push(pw); } }
   fly.style.left=pts[0].x+'px'; fly.style.top=pts[0].y+'px'; fly.style.transform='translateY(0)';
   const stepMs=120;                              // время на один прыжок (клетку)
   const lift=Math.max(9, size*0.5);              // высота подскока
