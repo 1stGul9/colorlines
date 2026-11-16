@@ -406,7 +406,10 @@ function togglePath(){ showPath=!showPath; localStorage.setItem('cl_path', showP
 function renderPathToggle(){ const b=document.getElementById('pathToggle'); if(b) b.classList.toggle('on', showPath); }
 let best=+(localStorage.getItem('cl_best')||0);
 let bestName=localStorage.getItem('cl_bestname')||'Чемпион';
-let tgtBest=best, tgtName=bestName;   // кого догоняем в ТЕКУЩЕЙ партии (слева)
+// Глобальный рекордсмен (король стола) — общий для всех игроков, приходит с сервера
+let champBest=+(localStorage.getItem('cl_champbest')||best||0);
+let champName=localStorage.getItem('cl_champname')||bestName;
+let tgtBest=champBest, tgtName=champName;   // кого догоняем в ТЕКУЩЕЙ партии (слева)
 let wasChamp=false, busy=false;
 
 // ── Усиления / магазин (Telegram Stars) ──
@@ -460,7 +463,7 @@ function randColor(){return Math.floor(Math.random()*COLORS.length);}
 function newGame(){
   grid=new Array(CELLS).fill(null); next=[randColor(),randColor(),randColor()];
   selected=null; score=0; over=false; prev=null; busy=false;
-  tgtBest=best; tgtName=bestName;        // цель партии — текущий рекорд
+  tgtBest=champBest; tgtName=champName;   // цель партии — глобальный рекорд (король стола)
   wasChamp = tgtBest<=0;
   bombMode=false; breatherArmed=false; freeUndoUsed=false;
   $('over').classList.remove('on');
@@ -766,8 +769,12 @@ function applyServerState(s){
   if(s.inv){ inv=s.inv; saveInv(); renderPower(); }
   if(s.skins){ skins=s.skins; saveSkins(); applySkin(); }
   if(typeof s.best==='number' && s.best>best){ best=s.best; bestName=s.bestName||bestName;
-    localStorage.setItem('cl_best',best); localStorage.setItem('cl_bestname',bestName);
-    if(score < best){ tgtBest=best; tgtName=bestName; wasChamp=false; }   // король = рекорд для текущей партии
+    localStorage.setItem('cl_best',best); localStorage.setItem('cl_bestname',bestName); }
+  // Глобальный король стола — общий рекорд по всем игрокам
+  if(typeof s.champBest==='number'){
+    champBest=s.champBest; champName=s.champName||champName||'Чемпион';
+    localStorage.setItem('cl_champbest',champBest); localStorage.setItem('cl_champname',champName);
+    if(score < champBest){ tgtBest=champBest; tgtName=champName; wasChamp=false; }  // ещё не обогнал — король = рекордсмен
     renderArena(); }
   renderShop();
 }
@@ -837,7 +844,7 @@ function load(){
   try{ const s=JSON.parse(localStorage.getItem('cl_state')||'null');
     if(s&&Array.isArray(s.grid)&&s.grid.length===CELLS&&!s.over){
       grid=s.grid; next=s.next; score=s.score; over=false; selected=null; prev=null;
-      tgtBest = (s.tgtBest!=null)?s.tgtBest:best; tgtName = s.tgtName||bestName;
+      tgtBest = (s.tgtBest!=null)?s.tgtBest:champBest; tgtName = s.tgtName||champName;
       wasChamp = (s.wasChamp!=null)?s.wasChamp:(tgtBest<=0||score>=tgtBest);
       renderNext(); render(); renderArena(); return true; }
   }catch(e){}

@@ -123,7 +123,14 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const user = await verifyInitData(body.initData);
     if (!user) return json({ error: "auth" }, 401, cors);
-    return json(await getProfile(user.id), 200, cors);
+    const profile = await getProfile(user.id);
+    // Глобальный рекордсмен (король стола) — виден всем игрокам, не только автору рекорда
+    let champBest = 0, champName = "";
+    try {
+      const { data: top } = await db.rpc("cl_leaderboard", { lim: 1 });
+      if (Array.isArray(top) && top[0] && top[0].score > 0) { champBest = top[0].score; champName = top[0].name || ""; }
+    } catch { /* ignore */ }
+    return json({ ...profile, champBest, champName }, 200, cors);
   }
 
   if (path.endsWith("/api/score")) {
