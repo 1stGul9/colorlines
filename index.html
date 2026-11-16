@@ -483,7 +483,8 @@ function clearCells(cells,gained){
 function addScore(g){
   score+=g;
   if(score>best){ best=score; bestName=PLAYER;
-    localStorage.setItem('cl_best',best); localStorage.setItem('cl_bestname',bestName); }
+    localStorage.setItem('cl_best',best); localStorage.setItem('cl_bestname',bestName);
+    scoreToServer(); }
   const champNow = tgtBest>0 ? score>=tgtBest : score>0;
   if(champNow && !wasChamp){ wasChamp=true; crownYou(); }
   renderArena();
@@ -526,10 +527,12 @@ function moveBall(from,to,path){
   fly.style.display='block'; fly.style.width=fly.style.height=size+'px'; fly.style.background=ballBg(color);
   const frames=path.map(i=>{const p=pt(i); return {left:p.x+'px', top:p.y+'px'};});
   fly.style.left=frames[0].left; fly.style.top=frames[0].top;   // стартовая позиция — без мигания в углу
-  const dur=Math.min(1100, Math.max(300, (path.length-1)*95));  // помедленнее: ~95мс на клетку, видно весь маршрут
+  const stepMs=95;                                              // время на одну клетку (прыжок)
+  const dur=Math.min(1400, Math.max(stepMs, (path.length-1)*stepMs));
   let done=false;
   const finish=()=>{ if(done) return; done=true; fly.style.display='none'; grid[to]=color; render(); afterMove(to); busy=false; };
-  const anim=fly.animate(frames,{duration:dur, easing:'ease-in-out'});
+  // steps(1) → шарик не скользит, а прыгает с клетки на клетку
+  const anim=fly.animate(frames,{duration:dur, easing:'steps(1)'});
   anim.onfinish=finish;
   // страховка: если анимация подвисла (вкладка в фоне / throttle), всё равно завершаем ход
   setTimeout(finish, dur+450);
@@ -693,7 +696,9 @@ function applyServerState(s){
   if(s.inv){ inv=s.inv; saveInv(); renderPower(); }
   if(s.skins){ skins=s.skins; saveSkins(); applySkin(); }
   if(typeof s.best==='number' && s.best>best){ best=s.best; bestName=s.bestName||bestName;
-    localStorage.setItem('cl_best',best); localStorage.setItem('cl_bestname',bestName); renderArena(); }
+    localStorage.setItem('cl_best',best); localStorage.setItem('cl_bestname',bestName);
+    if(score < best){ tgtBest=best; tgtName=bestName; wasChamp=false; }   // король = рекорд для текущей партии
+    renderArena(); }
   renderShop();
 }
 function syncFromServer(){ apiPost('/api/state',{}).then(applyServerState); }
@@ -707,6 +712,13 @@ function consumeServer(id, delay){
   if(!serverOn()) return;
   const fire=()=>apiPost('/api/consume',{id,qty:1}).then(s=>{ if(s&&s.inv){ inv=s.inv; saveInv(); renderPower(); } });
   delay ? setTimeout(fire,delay) : fire();
+}
+// Отправка рекорда на сервер (с debounce, чтобы не слать на каждое очко)
+let scoreT;
+function scoreToServer(){
+  if(!serverOn()) return;
+  clearTimeout(scoreT);
+  scoreT=setTimeout(()=>apiPost('/api/score',{score:best}), 800);
 }
 
 // order = {kind:'power'|'skin', id, qty, title, stars}
