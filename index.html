@@ -92,13 +92,15 @@
     box-shadow:inset 0 -3px 5px rgba(0,0,0,.35)}
   .ball::before{content:'';position:absolute;top:10%;left:13%;width:40%;height:34%;border-radius:50%;
     background:radial-gradient(circle,rgba(255,255,255,1),rgba(255,255,255,0) 72%)}
-  /* след ботинка на маршруте (F1 «Путь») — подошва + пятка */
-  .footstep{position:absolute;left:30%;top:27%;width:40%;height:46%;opacity:.5;pointer-events:none;
+  /* след на маршруте (F1 «Путь») — пара маленьких ступней (подошва+пятка каждая) */
+  .footstep{position:absolute;left:22%;top:22%;width:56%;height:56%;opacity:.5;pointer-events:none;
     background:
-      radial-gradient(ellipse 56% 40% at 50% 31%, #5d6570 72%, transparent 74%),
-      radial-gradient(ellipse 34% 25% at 50% 80%, #5d6570 72%, transparent 74%)}
-  .footstep.l{transform:rotate(-16deg)}
-  .footstep.r{transform:rotate(16deg)}
+      radial-gradient(ellipse 20% 15% at 36% 28%, #5d6570 72%, transparent 74%),
+      radial-gradient(ellipse 12% 9%  at 36% 47%, #5d6570 72%, transparent 74%),
+      radial-gradient(ellipse 20% 15% at 64% 52%, #5d6570 72%, transparent 74%),
+      radial-gradient(ellipse 12% 9%  at 64% 71%, #5d6570 72%, transparent 74%)}
+  .footstep.l{transform:rotate(-12deg)}
+  .footstep.r{transform:rotate(12deg)}
   .cell.sel .ball{animation:hop .5s ease-in-out infinite}
   .ball.spawn{animation:pop .22s ease-out}
   .ball.clear{animation:clear .26s ease-in forwards}
