@@ -123,9 +123,10 @@
     border-top:1px solid #243a5e;border-bottom:1px solid #0a1525}
   .rivals .rl{font-weight:800;color:#8fb0ff;white-space:nowrap;flex-shrink:0}
   .rtrack{flex:1;overflow:hidden;position:relative}
-  .rmarq{display:flex;gap:18px;white-space:nowrap;animation:marq 22s linear infinite;will-change:transform;
+  .rmarq{display:flex;gap:18px;white-space:nowrap;animation:marq 16s linear infinite;will-change:transform;
     padding-left:18px}
   .rmarq .rv{display:inline-flex;gap:5px;align-items:center;white-space:nowrap}
+  .rmarq .rv i{font-style:normal;font-weight:800;color:#8fb0ff;min-width:14px}
   .rmarq .rv b{color:#ffd23f;font-weight:800}
   @keyframes marq{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 
@@ -641,24 +642,21 @@ function renderNext(){
   next.forEach(c=>{const d=document.createElement('div');d.className='nb';d.style.background=ballBg(c);box.appendChild(d);});
 }
 
-// ── Лента претендентов (декоративная) ──
-const RIVALS=[['Вихрь',2384],['mmm',6748],['Барон',1388],['nova',292],['Серж',2041],
-  ['pixel',536],['Кира',1174],['Зефир',884],['Такт',1571],['Луна',742]];
+// ── Лента претендентов: реальный топ-10 с сервера, без заглушек ──
 const esc=(s)=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function rivalsHTML(list){
-  const one=list.map(([n,s])=>`<span class="rv">🏆 ${esc(n)} <b>${s|0}</b></span>`).join('');
+  const one=list.map(([n,s],i)=>`<span class="rv"><i>${i+1}</i> ${esc(n)} <b>${s|0}</b></span>`).join('');
   return one+one;   // дублируем для бесшовной бегущей строки
 }
 function renderRivals(){
   const box=$('rivals'); if(!box) return;
-  box.innerHTML=rivalsHTML(RIVALS);                 // сразу показываем заглушки
-  if(INVOICE_API){                                  // подтянуть реальный топ с сервера
+  box.innerHTML='';                                 // без заглушек — только реальный топ
+  if(INVOICE_API){                                  // подтянуть реальный топ-10 с сервера
     fetch(INVOICE_API.replace(/\/api\/invoice\/?$/,'')+'/api/top').then(r=>r.json()).then(rows=>{
       if(!Array.isArray(rows)) return;
-      const real=rows.filter(x=>x&&x.score>0&&x.name&&x.name!=='—').map(x=>[x.name,x.score]);
-      if(!real.length) return;                       // живых игроков ещё нет — оставляем заглушки
-      const fill=RIVALS.filter(([n])=>!real.some(r=>r[0]===n)).slice(0, Math.max(0,8-real.length));
-      box.innerHTML=rivalsHTML(real.concat(fill));
+      const real=rows.filter(x=>x&&x.score>0&&x.name&&x.name!=='—').map(x=>[x.name,x.score]).slice(0,10);
+      box.innerHTML = real.length ? rivalsHTML(real)
+        : '<span class="rv">Пока никого в топе — стань первым! 👑</span>';
     }).catch(()=>{});
   }
 }
