@@ -123,12 +123,10 @@
     border-top:1px solid #243a5e;border-bottom:1px solid #0a1525}
   .rivals .rl{font-weight:800;color:#8fb0ff;white-space:nowrap;flex-shrink:0}
   .rtrack{flex:1;overflow:hidden;position:relative}
-  .rmarq{display:flex;gap:18px;white-space:nowrap;animation:marq 16s linear infinite;will-change:transform;
-    padding-left:18px}
+  .rmarq{display:flex;gap:18px;white-space:nowrap;will-change:transform;padding-left:18px}
   .rmarq .rv{display:inline-flex;gap:5px;align-items:center;white-space:nowrap}
-  .rmarq .rv i{font-style:normal;font-weight:800;color:#8fb0ff;min-width:14px}
+  .rmarq .rv i{font-style:normal;font-size:13px;line-height:1}
   .rmarq .rv b{color:#ffd23f;font-weight:800}
-  @keyframes marq{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 
   /* ── Усиления (power-ups) ── */
   .powerbar{display:flex;gap:6px;margin-top:9px}
@@ -642,23 +640,36 @@ function renderNext(){
   next.forEach(c=>{const d=document.createElement('div');d.className='nb';d.style.background=ballBg(c);box.appendChild(d);});
 }
 
-// ── Лента претендентов: реальный топ-10 с сервера, без заглушек ──
+// ── Лента: реальный топ-10 с сервера, медали топ-3, бесшовная бегущая строка ──
 const esc=(s)=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-function rivalsHTML(list){
-  const one=list.map(([n,s],i)=>`<span class="rv"><i>${i+1}</i> ${esc(n)} <b>${s|0}</b></span>`).join('');
-  return one+one;   // дублируем для бесшовной бегущей строки
+const MEDAL=['🥇','🥈','🥉'];
+function rvCell([n,s],i){ const m=i<3?`<i>${MEDAL[i]}</i> `:''; return `<span class="rv">${m}${esc(n)} <b>${s|0}</b></span>`; }
+const MARQ_SPEED=90;   // px/с — чем больше, тем быстрее бежит строка
+function startMarquee(box, list){
+  box.getAnimations?.().forEach(a=>a.cancel());
+  if(!list.length){ box.innerHTML='<span class="rv">Пока никого в топе — стань первым! 👑</span>'; return; }
+  const track=box.parentElement;
+  const unit=list.map(rvCell).join('');
+  box.innerHTML=unit;
+  const setW=box.scrollWidth, trackW=track.clientWidth||320;
+  const reps=Math.max(1, Math.ceil(trackW/Math.max(setW,1)));  // блок шире трека → без «пустот» и сброса
+  const per=reps*list.length;
+  box.innerHTML = unit.repeat(reps).repeat(2);                 // два одинаковых блока для бесшовной петли
+  const kids=box.children;
+  const shift = kids[per] ? (kids[per].offsetLeft - kids[0].offsetLeft) : box.scrollWidth/2; // точный шаг петли
+  const dur = Math.max(5, shift/MARQ_SPEED);
+  box.animate([{transform:'translateX(0)'},{transform:`translateX(${-shift}px)`}],
+    {duration:dur*1000, iterations:Infinity, easing:'linear'});
 }
 function renderRivals(){
   const box=$('rivals'); if(!box) return;
   box.innerHTML='';                                 // без заглушек — только реальный топ
-  if(INVOICE_API){                                  // подтянуть реальный топ-10 с сервера
-    fetch(INVOICE_API.replace(/\/api\/invoice\/?$/,'')+'/api/top').then(r=>r.json()).then(rows=>{
-      if(!Array.isArray(rows)) return;
-      const real=rows.filter(x=>x&&x.score>0&&x.name&&x.name!=='—').map(x=>[x.name,x.score]).slice(0,10);
-      box.innerHTML = real.length ? rivalsHTML(real)
-        : '<span class="rv">Пока никого в топе — стань первым! 👑</span>';
-    }).catch(()=>{});
-  }
+  if(!INVOICE_API) return;
+  fetch(INVOICE_API.replace(/\/api\/invoice\/?$/,'')+'/api/top').then(r=>r.json()).then(rows=>{
+    if(!Array.isArray(rows)) return;
+    const real=rows.filter(x=>x&&x.score>0&&x.name&&x.name!=='—').map(x=>[x.name,x.score]).slice(0,10);
+    startMarquee(box, real);
+  }).catch(()=>{});
 }
 
 // ── Рендер арены (король vs ты) ──
